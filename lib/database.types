@@ -1,0 +1,87 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      users: {
+        Row: {
+          id: string
+          username: string
+          password: string
+          email: string
+          created_at: string
+          reset_token: string | null
+          reset_token_expiry: string | null
+          profile_picture_url: string | null
+          email_verified: boolean | null
+          verification_token: string | null
+          verification_token_expiry: string | null
+          notification_preferences: Json | null
+        }
+        Insert: {
+          id: string
+          username: string
+          password: string
+          email: string
+          created_at?: string
+          reset_token?: string | null
+          reset_token_expiry?: string | null
+          profile_picture_url?: string | null
+          email_verified?: boolean | null
+          verification_token?: string | null
+          verification_token_expiry?: string | null
+          notification_preferences?: Json | null
+        }
+        Update: {
+          id?: string
+          username?: string
+          password?: string
+          email?: string
+          created_at?: string
+          reset_token?: string | null
+          reset_token_expiry?: string | null
+          profile_picture_url?: string | null
+          email_verified?: boolean | null
+          verification_token?: string | null
+          verification_token_expiry?: string | null
+          notification_preferences?: Json | null
+        }
+      }
+      characters: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          faction: string | null
+          gender: string | null
+          combat_class: string | null
+          story_class: string | null
+          created_at: string
+          portrait_url: string | null
+        }
+        Insert: {
+          id: string
+          user_id: string
+          name: string
+          faction?: string | null
+          gender?: string | null
+          combat_class?: string | null
+          story_class?: string | null
+          created_at?: string
+          portrait_url?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          faction?: string | null
+          gender?: string | null
+          combat_class?: string | null
+          story_class?: string | null
+          created_at?: string
+          portrait_url?: string | null
+        }
+      }
+    }
+  }
+}
