@@ -38,6 +38,8 @@ async function getCategory(categoryId: string): Promise<ForumCategory | null> {
 
 // Optimized thread fetcher with view count tracking and caching
 async function getThread(threadId: string): Promise<ForumThread | null> {
+  const startTime = performance.now()
+
   // Increment view count using Redis
   const redis = getServerRedisClient()
   if (redis) {
@@ -58,7 +60,7 @@ async function getThread(threadId: string): Promise<ForumThread | null> {
   }
 
   // Fetch thread data with caching
-  return cache(
+  const thread = await cache(
     `forum:thread:${threadId}`,
     async () => {
       const supabase = createServerSupabaseClient()
@@ -93,6 +95,11 @@ async function getThread(threadId: string): Promise<ForumThread | null> {
     CACHE_TIMES.SHORT, // Thread data might change frequently
     { tags: [`thread:${threadId}`, `category:${threadId.split("-")[0]}`] },
   )
+
+  const endTime = performance.now()
+  console.log(`Thread data fetched in ${(endTime - startTime).toFixed(2)}ms`)
+
+  return thread
 }
 
 // Update thread view count in database periodically
@@ -100,8 +107,6 @@ async function updateThreadViewsInDatabase(threadId: string, viewCount: number) 
   try {
     const supabase = createServerSupabaseClient()
     await supabase.from("forum_threads").update({ view_count: viewCount }).eq("id", threadId)
-
-    console.log(`Updated thread ${threadId} view count to ${viewCount} in database`)
   } catch (error) {
     console.error(`Failed to update thread view count in database:`, error)
   }
@@ -109,12 +114,14 @@ async function updateThreadViewsInDatabase(threadId: string, viewCount: number) 
 
 // Optimized post fetcher with caching and batched user data
 async function getPosts(threadId: string): Promise<ForumPost[]> {
-  return cache(
+  const startTime = performance.now()
+
+  const posts = await cache(
     `forum:thread:${threadId}:posts`,
     async () => {
       const supabase = createServerSupabaseClient()
 
-      // Get posts with minimal user data and reactions
+      // Get posts with minimal user data and reactions in a single query
       const { data: posts, error } = await supabase
         .from("forum_posts")
         .select(`
@@ -135,39 +142,27 @@ async function getPosts(threadId: string): Promise<ForumPost[]> {
     CACHE_TIMES.SHORT, // Posts might change frequently
     { tags: [`thread:${threadId}:posts`, `thread:${threadId}`] },
   )
+
+  const endTime = performance.now()
+  console.log(`Posts fetched in ${(endTime - startTime).toFixed(2)}ms for ${posts.length} posts`)
+
+  return posts
 }
 
 export default async function ThreadPage({ params }: ThreadPageProps) {
   const { categoryId, threadId } = params
-
-  console.log("Rendering thread page:", { categoryId, threadId })
+  const pageLoadStart = performance.now()
 
   // Parallel data fetching with Promise.all for better performance
   const [category, thread, posts, currentUser] = await Promise.all([
-    getCategory(categoryId).catch((err) => {
-      console.error("Error fetching category:", err)
-      return null
-    }),
-    getThread(threadId).catch((err) => {
-      console.error("Error fetching thread:", err)
-      return null
-    }),
-    getPosts(threadId).catch((err) => {
-      console.error("Error fetching posts:", err)
-      return []
-    }),
-    getUserFromSession().catch((err) => {
-      console.error("Error fetching user session:", err)
-      return null
-    }),
+    getCategory(categoryId),
+    getThread(threadId),
+    getPosts(threadId),
+    getUserFromSession(), // This should be cached elsewhere
   ])
 
-  console.log("Thread page data:", {
-    categoryFound: !!category,
-    threadFound: !!thread,
-    postsCount: posts?.length || 0,
-    userLoggedIn: !!currentUser,
-  })
+  const pageLoadEnd = performance.now()
+  console.log(`Thread page data loaded in ${(pageLoadEnd - pageLoadStart).toFixed(2)}ms`)
 
   if (!category || !thread) {
     return (

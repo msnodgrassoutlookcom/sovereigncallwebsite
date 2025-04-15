@@ -50,7 +50,6 @@ export function NewReplyForm({ threadId, onPostCreated }: NewReplyFormProps) {
 
     try {
       setIsSubmitting(true)
-      console.log("Submitting post:", { threadId, content, attachments })
 
       const response = await fetch("/api/forum/posts", {
         method: "POST",
@@ -58,20 +57,17 @@ export function NewReplyForm({ threadId, onPostCreated }: NewReplyFormProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          thread_id: threadId, // Use snake_case to match API expectations
+          threadId,
           content,
           attachments,
         }),
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        console.error("Server error:", errorData)
-        throw new Error(errorData.error || "Failed to create post")
+        throw new Error("Failed to create post")
       }
 
       const newPost = await response.json()
-      console.log("Post created successfully:", newPost)
 
       toast({
         title: "Success",
@@ -85,7 +81,7 @@ export function NewReplyForm({ threadId, onPostCreated }: NewReplyFormProps) {
       console.error("Error creating post:", error)
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to post your reply. Please try again.",
+        description: "Failed to post your reply. Please try again.",
         variant: "destructive",
       })
     } finally {

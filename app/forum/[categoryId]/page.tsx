@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { NewThreadButton } from "@/components/forum/new-thread-button"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
+import { cache, CACHE_TIMES } from "@/lib/cache"
 import type { ForumCategory, ForumThread } from "@/lib/types"
 
 interface CategoryPageProps {
@@ -12,71 +13,116 @@ interface CategoryPageProps {
   }
 }
 
+// Optimized category fetcher with caching
 async function getCategory(categoryId: string): Promise<ForumCategory | null> {
-  try {
-    const supabase = createServerSupabaseClient()
+  return cache(
+    `forum:category:${categoryId}`,
+    async () => {
+      const supabase = createServerSupabaseClient()
+      const { data, error } = await supabase.from("forum_categories").select("*").eq("id", categoryId).single()
 
-    const { data, error } = await supabase.from("forum_categories").select("*").eq("id", categoryId).single()
+      if (error) {
+        console.error("Error fetching category:", error)
+        return null
+      }
 
-    if (error) {
-      console.error("Error fetching category:", error)
-      return null
-    }
-
-    return data
-  } catch (error) {
-    console.error("Error fetching category:", error)
-    return null
-  }
+      return data
+    },
+    CACHE_TIMES.DAY, // Categories rarely change, cache for a day
+    { tags: [`category:${categoryId}`, "categories"] },
+  )
 }
 
+// Optimized thread fetcher with batched queries
 async function getThreads(categoryId: string): Promise<ForumThread[]> {
-  try {
-    const supabase = createServerSupabaseClient()
+  return cache(
+    `forum:category:${categoryId}:threads`,
+    async () => {
+      const supabase = createServerSupabaseClient()
+      const startTime = performance.now()
 
-    const { data, error } = await supabase
-      .from("forum_threads")
-      .select(`
-        *,
-        post_count:forum_posts(count)
-      `)
-      .eq("category_id", categoryId)
-      .order("created_at", { ascending: false })
+      // Get threads with a single query
+      const { data: threads, error } = await supabase
+        .from("forum_threads")
+        .select("*")
+        .eq("category_id", categoryId)
+        .order("created_at", { ascending: false })
 
-    if (error) {
-      console.error("Error fetching threads:", error)
-      return []
-    }
+      if (error) {
+        console.error("Error fetching threads:", error)
+        return []
+      }
 
-    // Fetch usernames separately
-    const threadsWithAuthors = await Promise.all(
-      data.map(async (thread) => {
-        const { data: userData, error: userError } = await supabase
-          .from("users")
-          .select("username, display_name")
-          .eq("id", thread.user_id)
-          .single()
+      if (!threads || threads.length === 0) {
+        return []
+      }
 
-        if (userError) {
-          console.error("Error fetching user data:", userError)
-          return { ...thread, author: "Unknown User" }
+      // Extract all user IDs for a single batch query
+      const userIds = [...new Set(threads.map((thread) => thread.user_id))]
+
+      // Batch query for all users
+      const { data: users, error: userError } = await supabase
+        .from("users")
+        .select("id, username, display_name")
+        .in("id", userIds)
+
+      if (userError) {
+        console.error("Error fetching users:", userError)
+      }
+
+      // Create a map of user data for quick lookup
+      const userMap = (users || []).reduce(
+        (map, user) => {
+          map[user.id] = user
+          return map
+        },
+        {} as Record<string, any>,
+      )
+
+      // Batch query for post counts using a single query with GROUP BY
+      const { data: postCounts, error: countError } = await supabase.rpc("get_thread_post_counts", {
+        thread_ids: threads.map((t) => t.id),
+      })
+
+      if (countError) {
+        console.error("Error counting posts:", countError)
+      }
+
+      // Create a map of post counts for quick lookup
+      const postCountMap = (postCounts || []).reduce(
+        (map, item) => {
+          map[item.thread_id] = item.count
+          return map
+        },
+        {} as Record<string, number>,
+      )
+
+      // Combine all data
+      const threadsWithDetails = threads.map((thread) => {
+        const user = userMap[thread.user_id] || {}
+        return {
+          ...thread,
+          author: user.username || "Unknown User",
+          display_name: user.display_name,
+          post_count: [{ count: postCountMap[thread.id] || 0 }],
         }
+      })
 
-        return { ...thread, author: userData?.username || "Unknown User", display_name: userData?.display_name }
-      }),
-    )
+      const endTime = performance.now()
+      console.log(`Thread data fetched in ${(endTime - startTime).toFixed(2)}ms for ${threads.length} threads`)
 
-    return threadsWithAuthors || []
-  } catch (error) {
-    console.error("Error fetching threads:", error)
-    return []
-  }
+      return threadsWithDetails
+    },
+    CACHE_TIMES.SHORT, // Threads change more frequently
+    { tags: [`category:${categoryId}:threads`, `category:${categoryId}`] },
+  )
 }
 
 export default async function CategoryPage({ params }: CategoryPageProps) {
   const { categoryId } = params
-  const category = await getCategory(categoryId)
-  const threads = await getThreads(categoryId)
+
+  // Parallel data fetching
+  const [category, threads] = await Promise.all([getCategory(categoryId), getThreads(categoryId)])
 
   if (!category) {
     return (

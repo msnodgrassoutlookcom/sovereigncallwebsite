@@ -1,177 +1,123 @@
-import { getRedisClient } from "./redis"
+// Performance monitoring utilities
 
-interface TimingData {
-  operation: string
-  duration: number
-  timestamp: number
-  metadata?: Record<string, string | number | boolean>
-}
-
-// Collect performance metrics in Redis
-export async function recordTiming(data: TimingData): Promise<boolean> {
-  const redis = getRedisClient()
-  if (!redis) return false
+/**
+ * Track and report page load metrics
+ */
+export function reportPageLoadMetrics() {
+  if (typeof window === "undefined") return
 
   try {
-    const { operation, duration, timestamp = Date.now(), metadata = {} } = data
+    // Wait for the page to fully load
+    window.addEventListener("load", () => {
+      setTimeout(() => {
+        const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming
+        const paintEntries = performance.getEntriesByType("paint")
 
-    // Store timing in a sorted set for easy retrieval by time range
-    // Key format: perf:timings:{operation}
-    const key = `perf:timings:${operation}`
-    const id = `${timestamp}:${Math.random().toString(36).substring(2, 10)}`
+        const fcp = paintEntries.find((entry) => entry.name === "first-contentful-paint")?.startTime || 0
+        const lcp = getLCP()
 
-    // Add to sorted set with score as timestamp
-    await redis.zadd(key, { score: timestamp, member: id })
+        const metrics = {
+          // Navigation timing
+          pageLoadTime: navigation.loadEventEnd - navigation.startTime,
+          ttfb: navigation.responseStart - navigation.requestStart,
+          domContentLoaded: navigation.domContentLoadedEventEnd - navigation.startTime,
+          domInteractive: navigation.domInteractive - navigation.startTime,
 
-    // Store detailed data in a hash
-    const dataKey = `perf:data:${id}`
-    const hashData = {
-      operation,
-      duration: duration.toString(),
-      timestamp: timestamp.toString(),
-      ...Object.entries(metadata).reduce(
-        (acc, [k, v]) => {
-          acc[k] = String(v)
-          return acc
-        },
-        {} as Record<string, string>,
-      ),
-    }
+          // Paint timing
+          firstPaint: paintEntries.find((entry) => entry.name === "first-paint")?.startTime || 0,
+          firstContentfulPaint: fcp,
+          largestContentfulPaint: lcp,
 
-    await redis.hset(dataKey, hashData)
+          // Resource timing
+          resourceCount: performance.getEntriesByType("resource").length,
+          resourceLoadTime: getTotalResourceLoadTime(),
 
-    // Set expiry for data (7 days)
-    await redis.expire(dataKey, 7 * 24 * 60 * 60)
+          // Page URL (for analysis)
+          page: window.location.pathname,
 
-    // Trim sorted sets to keep only last 1000 entries
-    if (Math.random() < 0.1) {
-      // Only do this occasionally to avoid overhead
-      await redis.zremrangebyrank(key, 0, -1001)
-    }
+          // Timestamp
+          timestamp: new Date().toISOString(),
+        }
 
-    // Update summary statistics
-    await updateTimingSummary(operation, duration)
+        // Send metrics to analytics endpoint
+        sendMetricsToAnalytics(metrics)
 
-    return true
+        // Log metrics to console in development
+        if (process.env.NODE_ENV === "development") {
+          console.log("Page Performance Metrics:", metrics)
+        }
+      }, 0)
+    })
   } catch (error) {
-    console.error(`Error recording timing:`, error)
-    return false
+    console.error("Error reporting performance metrics:", error)
   }
 }
 
-// Update summary statistics
-async function updateTimingSummary(operation: string, duration: number): Promise<void> {
-  const redis = getRedisClient()
-  if (!redis) return
-
+/**
+ * Get Largest Contentful Paint value
+ */
+function getLCP(): number {
   try {
-    const summaryKey = `perf:summary:${operation}`
+    const entries = performance.getEntriesByType("element") as PerformanceElementTiming[]
+    if (!entries || entries.length === 0) return 0
 
-    // Use Redis to track min, max, sum, and count
-    await redis.hincrbyfloat(summaryKey, "sum", duration)
-    await redis.hincrby(summaryKey, "count", 1)
-
-    // Update minimum if needed
-    const currentMin = await redis.hget(summaryKey, "min")
-    if (!currentMin || duration < Number.parseFloat(currentMin)) {
-      await redis.hset(summaryKey, { min: duration.toString() })
-    }
-
-    // Update maximum if needed
-    const currentMax = await redis.hget(summaryKey, "max")
-    if (!currentMax || duration > Number.parseFloat(currentMax)) {
-      await redis.hset(summaryKey, { max: duration.toString() })
-    }
-
-    // Set expiry (refreshed on each update)
-    await redis.expire(summaryKey, 30 * 24 * 60 * 60) // 30 days
+    // Find the largest element by renderTime
+    return Math.max(...entries.map((entry) => entry.renderTime || 0))
   } catch (error) {
-    console.error(`Error updating timing summary:`, error)
+    return 0
   }
 }
 
-// Get summary statistics
-export async function getTimingSummary(operation: string): Promise<{
-  min: number
-  max: number
-  avg: number
-  count: number
-  p95?: number
-} | null> {
-  const redis = getRedisClient()
-  if (!redis) return null
-
+/**
+ * Calculate total resource load time
+ */
+function getTotalResourceLoadTime(): number {
   try {
-    const summaryKey = `perf:summary:${operation}`
-    const summary = await redis.hgetall(summaryKey)
+    const resources = performance.getEntriesByType("resource")
+    let totalTime = 0
 
-    if (!summary || Object.keys(summary).length === 0) {
-      return null
-    }
+    resources.forEach((resource) => {
+      totalTime += resource.duration
+    })
 
-    const min = Number.parseFloat(summary.min || "0")
-    const max = Number.parseFloat(summary.max || "0")
-    const sum = Number.parseFloat(summary.sum || "0")
-    const count = Number.parseInt(summary.count || "0", 10)
-
-    const avg = count > 0 ? sum / count : 0
-
-    // Calculate p95 if we have recent timings
-    let p95: number | undefined
-    try {
-      const timingsKey = `perf:timings:${operation}`
-      const recentTimings = await redis.zrevrange(timingsKey, 0, 99, { withScores: false })
-
-      if (recentTimings.length >= 20) {
-        // Get durations for recent entries
-        const durations = await Promise.all(
-          recentTimings.map(async (id) => {
-            const data = await redis.hget(`perf:data:${id}`, "duration")
-            return data ? Number.parseFloat(data) : 0
-          }),
-        )
-
-        // Sort durations
-        durations.sort((a, b) => a - b)
-
-        // Calculate p95
-        const p95Index = Math.floor(durations.length * 0.95)
-        p95 = durations[p95Index]
-      }
-    } catch (error) {
-      console.error(`Error calculating p95:`, error)
-    }
-
-    return { min, max, avg, count, p95 }
+    return totalTime
   } catch (error) {
-    console.error(`Error getting timing summary:`, error)
-    return null
+    return 0
   }
 }
 
-// Create middleware to track API response times
-export function withPerformanceTracking(handler: Function, operation: string) {
-  return async (request: Request) => {
-    const start = Date.now()
-    const response = await handler(request)
-    const duration = Date.now() - start
-
-    // Extract path from URL
-    const url = new URL(request.url)
-    const path = url.pathname
-
-    // Record timing in background (don't await)
-    recordTiming({
-      operation,
-      duration,
-      timestamp: Date.now(),
-      metadata: {
-        path,
-        method: request.method,
-        status: response.status,
+/**
+ * Send metrics to analytics endpoint
+ */
+async function sendMetricsToAnalytics(metrics: any) {
+  try {
+    await fetch("/api/system/metrics", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    }).catch(console.error)
+      body: JSON.stringify(metrics),
+      // Use keepalive to ensure the request completes even if the page is unloading
+      keepalive: true,
+    })
+  } catch (error) {
+    console.error("Failed to send metrics:", error)
+  }
+}
 
-    return response
+/**
+ * Initialize performance monitoring
+ */
+export function initPerformanceMonitoring() {
+  if (typeof window !== "undefined") {
+    // Report page load metrics
+    reportPageLoadMetrics()
+
+    // Monitor route changes for SPA navigation
+    document.addEventListener("routeChangeComplete", (url) => {
+      console.log(`Route changed to: ${url}`)
+      // Reset performance metrics for the new route
+      performance.mark("routeChangeStart")
+    })
   }
 }
