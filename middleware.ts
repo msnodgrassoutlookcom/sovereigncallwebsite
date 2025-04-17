@@ -28,8 +28,8 @@ export async function middleware(request: NextRequest) {
 
   // Special handling for account pages to prevent auth issues
   const path = request.nextUrl.pathname
-  if (path.startsWith("/account/")) {
-    // For account pages, we'll let the client handle auth redirects
+  if (path.startsWith("/account") || path.includes("character-builder")) {
+    // For account and character pages, we'll let the client handle auth redirects
     // This prevents middleware from interfering with auth state
     const response = NextResponse.next()
     return addSecurityHeaders(response)

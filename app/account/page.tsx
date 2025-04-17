@@ -23,7 +23,7 @@ interface UserProfile {
 }
 
 export default function AccountPage() {
-  const { isLoggedIn, user, deleteCharacter } = useAuth()
+  const { isLoggedIn, user, deleteCharacter, loading, refreshAuth } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
   const [profile, setProfile] = useState<UserProfile>({
@@ -33,23 +33,44 @@ export default function AccountPage() {
     favoriteFaction: "",
   })
   const [isSaving, setIsSaving] = useState(false)
+  const [pageLoading, setPageLoading] = useState(true)
 
-  // Redirect if not logged in
+  // Enhanced auth check with refresh
   useEffect(() => {
-    if (!isLoggedIn) {
-      router.push("/login")
-    } else {
+    const checkAuth = async () => {
+      setPageLoading(true)
+
+      // Wait for auth context to initialize
+      if (loading) {
+        return
+      }
+
+      if (!isLoggedIn) {
+        // Redirect to login if not logged in
+        router.push("/login?redirect=/account")
+        return
+      }
+
+      // Refresh auth session
+      await refreshAuth()
+
       // Load profile from localStorage if it exists
-      const storedProfile = localStorage.getItem(`sovereignCallProfile_${user?.id}`)
-      if (storedProfile) {
-        try {
-          setProfile(JSON.parse(storedProfile))
-        } catch (error) {
-          console.error("Error parsing stored profile:", error)
+      if (user) {
+        const storedProfile = localStorage.getItem(`sovereignCallProfile_${user.id}`)
+        if (storedProfile) {
+          try {
+            setProfile(JSON.parse(storedProfile))
+          } catch (error) {
+            console.error("Error parsing stored profile:", error)
+          }
         }
       }
+
+      setPageLoading(false)
     }
-  }, [isLoggedIn, router, user])
+
+    checkAuth()
+  }, [isLoggedIn, loading, refreshAuth, router, user])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -90,8 +111,21 @@ export default function AccountPage() {
     [deleteCharacter, toast],
   )
 
-  if (!isLoggedIn) {
-    return null // Will redirect in useEffect
+  // Show loading state
+  if (pageLoading || loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto"></div>
+          <p className="mt-4 text-lg">Loading your account...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If not logged in, the redirect will happen in useEffect
+  if (!isLoggedIn || !user) {
+    return null
   }
 
   return (

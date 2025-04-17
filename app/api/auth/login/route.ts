@@ -22,7 +22,10 @@ export async function POST(request: Request) {
     // Sanitize username input
     const sanitizedUsername = validateAndSanitize(username, "username")
     if (!sanitizedUsername) {
-      return NextResponse.json({ error: "Invalid username format" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Invalid username format. Use 3-30 alphanumeric characters, underscores, or hyphens." },
+        { status: 400 },
+      )
     }
 
     // Get client IP for rate limiting
@@ -195,20 +198,20 @@ export async function POST(request: Request) {
 
       // Store session data with 24 hour expiry
       await redis.set(sessionKey, JSON.stringify(sessionData), { ex: 86400 })
-
-      // Log successful login
-      await redis.lpush(
-        `security:login:history:${user.id}`,
-        JSON.stringify({
-          timestamp: Date.now(),
-          ip,
-          userAgent: request.headers.get("user-agent") || "unknown",
-        }),
-      )
-
-      // Keep only last 10 logins
-      await redis.ltrim(`security:login:history:${user.id}`, 0, 9)
     }
+
+    // Log successful login
+    await redis.lpush(
+      `security:login:history:${user.id}`,
+      JSON.stringify({
+        timestamp: Date.now(),
+        ip,
+        userAgent: request.headers.get("user-agent") || "unknown",
+      }),
+    )
+
+    // Keep only last 10 logins
+    await redis.ltrim(`security:login:history:${user.id}`, 0, 9)
 
     // Create response
     const response = NextResponse.json(

@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useContext, useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import type { User, SavedCharacter } from "@/lib/types"
 
@@ -14,9 +14,13 @@ interface AuthContextType {
   loading: boolean
   saveCharacter: (character: Omit<SavedCharacter, "id" | "createdAt">) => Promise<boolean>
   deleteCharacter: (characterId: string) => Promise<boolean>
+  refreshAuth: () => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+// Create a session storage key
+const SESSION_STORAGE_KEY = "sovereign_call_session_active"
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -24,53 +28,99 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  // Load user from localStorage on initial render
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const storedUser = localStorage.getItem("user")
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser)
+  // Enhanced user loading with session verification
+  const loadUserData = useCallback(async () => {
+    try {
+      setLoading(true)
+      const storedUser = localStorage.getItem("user")
+
+      if (storedUser) {
+        let parsedUser
+        try {
+          parsedUser = JSON.parse(storedUser)
+        } catch (e) {
+          console.error("Error parsing stored user data:", e)
+          localStorage.removeItem("user")
+          sessionStorage.removeItem(SESSION_STORAGE_KEY)
+          return
+        }
+
+        // Set session storage flag to indicate active session
+        sessionStorage.setItem(SESSION_STORAGE_KEY, "true")
+
+        // Verify session with backend
+        const verifyResponse = await fetch("/api/auth/verify-session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId: parsedUser.id }),
+        }).catch(() => null)
+
+        if (verifyResponse && verifyResponse.ok) {
+          // Session is valid
           setUser(parsedUser)
           setIsLoggedIn(true)
-
-          // Add session refresh on load
-          await refreshUserSession(parsedUser.id)
-
-          console.log("User loaded from localStorage:", parsedUser.username)
+          console.log("User session verified:", parsedUser.username)
         } else {
-          console.log("No user found in localStorage")
+          // Session verification failed but we'll still use local data
+          // This prevents unnecessary logouts during network issues
+          console.warn("Session verification failed, using cached credentials")
+          setUser(parsedUser)
+          setIsLoggedIn(true)
         }
-      } catch (error) {
-        console.error("Error loading user from localStorage:", error)
-        // Clear potentially corrupted data
-        localStorage.removeItem("user")
-      } finally {
-        setLoading(false)
+      } else {
+        console.log("No user found in localStorage")
+        sessionStorage.removeItem(SESSION_STORAGE_KEY)
+      }
+    } catch (error) {
+      console.error("Error loading user from localStorage:", error)
+      // Clear potentially corrupted data
+      localStorage.removeItem("user")
+      sessionStorage.removeItem(SESSION_STORAGE_KEY)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Load user on initial render
+  useEffect(() => {
+    loadUserData()
+
+    // Add event listener for storage changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "user" || e.key === SESSION_STORAGE_KEY) {
+        loadUserData()
       }
     }
 
-    loadUser()
-  }, [])
+    window.addEventListener("storage", handleStorageChange)
+    return () => window.removeEventListener("storage", handleStorageChange)
+  }, [loadUserData])
 
-  // Add this new function to refresh the user session
-  const refreshUserSession = async (userId: string) => {
+  // Add a function to refresh auth state
+  const refreshAuth = async () => {
     try {
+      if (!user) return false
+
       const response = await fetch("/api/auth/refresh-session", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId: user.id }),
       })
 
       if (!response.ok) {
-        console.warn("Failed to refresh session, but continuing with stored credentials")
+        console.warn("Failed to refresh session")
+        return false
       }
 
-      return response.ok
+      // Update session storage to indicate active session
+      sessionStorage.setItem(SESSION_STORAGE_KEY, "true")
+      return true
     } catch (error) {
-      console.error("Error refreshing session:", error)
+      console.error("Error refreshing auth:", error)
       return false
     }
   }
@@ -100,6 +150,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoggedIn(true)
       localStorage.setItem("user", JSON.stringify(data.user))
 
+      // Set session storage flag
+      sessionStorage.setItem(SESSION_STORAGE_KEY, "true")
+
       return { success: true }
     } catch (error) {
       console.error("Login error:", error)
@@ -112,6 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
     setIsLoggedIn(false)
     localStorage.removeItem("user")
+    sessionStorage.removeItem(SESSION_STORAGE_KEY)
     console.log("User logged out")
 
     // Redirect to home page
@@ -205,13 +259,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Update the user state by removing the deleted character
-      setUser((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          characters: prev.characters.filter((char) => char.id !== characterId),
-        }
-      })
+      const updatedUser = {
+        ...user,
+        characters: user.characters.filter((char) => char.id !== characterId),
+      }
+
+      setUser(updatedUser)
+      localStorage.setItem("user", JSON.stringify(updatedUser))
 
       return true
     } catch (error) {
@@ -222,7 +276,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoggedIn, login, logout, register, loading, saveCharacter, deleteCharacter }}
+      value={{
+        user,
+        isLoggedIn,
+        login,
+        logout,
+        register,
+        loading,
+        saveCharacter,
+        deleteCharacter,
+        refreshAuth,
+      }}
     >
       {children}
     </AuthContext.Provider>

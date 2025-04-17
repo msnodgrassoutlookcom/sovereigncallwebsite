@@ -10,38 +10,34 @@ import { useAuth } from "@/context/auth-context"
 import { useToast } from "@/hooks/use-toast"
 
 export default function CharactersPage() {
-  const { isLoggedIn, user, deleteCharacter } = useAuth()
+  const { isLoggedIn, user, deleteCharacter, loading, refreshAuth } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
-  const [isLoading, setIsLoading] = useState(true)
-  const [authChecked, setAuthChecked] = useState(false)
+  const [pageLoading, setPageLoading] = useState(true)
 
-  // Improved auth check with retry mechanism
+  // Enhanced auth check with refresh
   useEffect(() => {
-    let retryCount = 0
-    const maxRetries = 3
+    const checkAuth = async () => {
+      setPageLoading(true)
 
-    const checkAuth = () => {
-      if (isLoggedIn) {
-        setAuthChecked(true)
-        setIsLoading(false)
+      // Wait for auth context to initialize
+      if (loading) {
         return
       }
 
-      if (retryCount < maxRetries) {
-        retryCount++
-        // Wait a bit and try again to account for auth initialization
-        setTimeout(checkAuth, 500)
-      } else {
-        // After max retries, if still not logged in, redirect
-        setIsLoading(false)
-        setAuthChecked(true)
+      if (!isLoggedIn) {
+        // Redirect to login if not logged in
         router.push("/login?redirect=/account/characters")
+        return
       }
+
+      // Refresh auth session
+      await refreshAuth()
+      setPageLoading(false)
     }
 
     checkAuth()
-  }, [isLoggedIn, router])
+  }, [isLoggedIn, loading, refreshAuth, router])
 
   const handleDeleteCharacter = async (id: string, name: string) => {
     if (confirm(`Are you sure you want to delete ${name}?`)) {
@@ -63,7 +59,7 @@ export default function CharactersPage() {
   }
 
   // Show loading state
-  if (isLoading) {
+  if (pageLoading || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 flex items-center justify-center">
         <div className="text-center">
@@ -74,8 +70,8 @@ export default function CharactersPage() {
     )
   }
 
-  // If auth check is complete but not logged in, the redirect will happen
-  if (authChecked && !isLoggedIn) {
+  // If not logged in, the redirect will happen in useEffect
+  if (!isLoggedIn || !user) {
     return null
   }
 

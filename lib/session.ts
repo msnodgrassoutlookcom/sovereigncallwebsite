@@ -38,9 +38,12 @@ export async function getSession(req?: NextRequest) {
 
       if (sessionData) {
         try {
-          return JSON.parse(sessionData)
+          // Parse the session data from JSON string, but only if it's not already an object
+          const parsedSessionData = typeof sessionData === "string" ? JSON.parse(sessionData) : sessionData
+          return parsedSessionData
         } catch (error) {
           console.error("Error parsing session data:", error)
+          return null
         }
       }
     }
@@ -91,10 +94,10 @@ export async function refreshSession(userId: string) {
     const sessionData = await redis.get<string>(sessionKey)
 
     if (sessionData) {
-      // Parse the session data
+      // Parse the session data from JSON string, but only if it's not already an object
       let sessionObj
       try {
-        sessionObj = JSON.parse(sessionData)
+        sessionObj = typeof sessionData === "string" ? JSON.parse(sessionData) : sessionData
       } catch (e) {
         console.error("Error parsing session data:", e)
         return false
@@ -105,7 +108,7 @@ export async function refreshSession(userId: string) {
       sessionObj.sessionExpiry = newExpiry
 
       // Save the updated session
-      await redis.set(sessionKey, JSON.stringify(sessionObj), { ex: 86400 }) // 24 hours
+      await redis.set(sessionKey, JSON.stringify(sessionObj), { ex: 86400 })
 
       // Also update any related session tokens
       if (sessionObj.sessionToken) {
