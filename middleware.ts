@@ -38,6 +38,9 @@ export async function middleware(request: NextRequest) {
   // Get response from next middleware or route handler
   const response = NextResponse.next()
 
+  // Set Cache-Control header to enable browser caching
+  response.headers.set("Cache-Control", "public, max-age=3600, s-maxage=3600")
+
   // Add security headers
   const secureResponse = addSecurityHeaders(response)
 

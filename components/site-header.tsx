@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { PATREON_URL } from "@/lib/constants"
+import { useEffect, useState } from "react"
 
 const mainNav = [
   { title: "Home", href: "/" },
@@ -32,6 +33,21 @@ const mainNav = [
 export function SiteHeader() {
   const pathname = usePathname()
   const { isLoggedIn, user, logout } = useAuth()
+
+  // State to manage cookie consent
+  const [cookieConsent, setCookieConsent] = useState(false)
+
+  // Load cookie consent from local storage on mount
+  useEffect(() => {
+    const consent = localStorage.getItem("cookieConsent") === "true"
+    setCookieConsent(consent)
+  }, [])
+
+  // Function to handle cookie consent acceptance
+  const acceptCookies = () => {
+    localStorage.setItem("cookieConsent", "true")
+    setCookieConsent(true)
+  }
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -152,6 +168,22 @@ export function SiteHeader() {
           <MobileNav />
         </div>
       </div>
+      {/* Cookie Consent Banner */}
+      {!cookieConsent && (
+        <div className="fixed bottom-0 left-0 w-full bg-gray-800 text-gray-100 py-3 px-6 z-50">
+          <div className="container mx-auto flex items-center justify-between">
+            <p>
+              We use cookies to enhance your experience. By using our site, you agree to our use of cookies.
+              <Link href="/privacy" className="underline text-gray-200">
+                Learn more
+              </Link>
+            </p>
+            <Button size="sm" onClick={acceptCookies}>
+              Accept
+            </Button>
+          </div>
+        </div>
+      )}
     </header>
   )
 }

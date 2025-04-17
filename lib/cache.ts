@@ -10,13 +10,6 @@ export const CACHE_TIMES = {
   WEEK: 604800, // 1 week
 }
 
-// Cache statistics for monitoring
-const cacheStats = {
-  hits: 0,
-  misses: 0,
-  errors: 0,
-}
-
 interface CacheOptions {
   tags?: string[]
   staleWhileRevalidate?: boolean
