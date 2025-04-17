@@ -227,7 +227,12 @@ export async function POST(request: Request) {
           csrfToken,
         },
       },
-      { status: 200 },
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
     )
 
     // Set secure HTTP-only cookie for session
