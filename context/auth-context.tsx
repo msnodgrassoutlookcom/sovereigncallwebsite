@@ -33,13 +33,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true)
       const storedUser = localStorage.getItem("user")
-      console.log("storedUser:", storedUser) // Add this line
 
       if (storedUser) {
         let parsedUser
         try {
           parsedUser = JSON.parse(storedUser)
-          console.log("parsedUser:", parsedUser) // Add this line
         } catch (e) {
           console.error("Error parsing stored user data:", e)
           localStorage.removeItem("user")
@@ -58,8 +56,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
           body: JSON.stringify({ userId: parsedUser.id }),
         }).catch(() => null)
-
-        console.log("verifyResponse:", verifyResponse) // Add this line
 
         if (verifyResponse && verifyResponse.ok) {
           // Session is valid

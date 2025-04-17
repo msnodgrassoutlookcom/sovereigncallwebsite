@@ -1,30 +1,78 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Edit, Trash2, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/context/auth-context"
+import { useToast } from "@/hooks/use-toast"
 
 export default function CharactersPage() {
-  const { isLoggedIn, user, deleteCharacter, loading } = useAuth()
+  const { isLoggedIn, user, deleteCharacter, loading, refreshAuth } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
+  const [pageLoading, setPageLoading] = useState(true)
 
-  // Redirect to login if not logged in
+  // Enhanced auth check with refresh
   useEffect(() => {
-    if (!isLoggedIn && !loading) {
-      router.push("/login")
-    }
-  }, [isLoggedIn, router, loading])
+    const checkAuth = async () => {
+      setPageLoading(true)
 
-  if (loading) {
-    return <div>Loading...</div>
+      // Wait for auth context to initialize
+      if (loading) {
+        return
+      }
+
+      if (!isLoggedIn) {
+        // Redirect to login if not logged in
+        router.push("/login?redirect=/account/characters")
+        return
+      }
+
+      // Refresh auth session
+      await refreshAuth()
+      setPageLoading(false)
+    }
+
+    checkAuth()
+  }, [isLoggedIn, loading, refreshAuth, router])
+
+  const handleDeleteCharacter = async (id: string, name: string) => {
+    if (confirm(`Are you sure you want to delete ${name}?`)) {
+      const success = await deleteCharacter(id)
+
+      if (success) {
+        toast({
+          title: "Character Deleted",
+          description: `${name} has been deleted from your account.`,
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to delete character. Please try again.",
+          variant: "destructive",
+        })
+      }
+    }
   }
 
-  if (!user) {
-    return null // Don't render anything while redirecting
+  // Show loading state
+  if (pageLoading || loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto"></div>
+          <p className="mt-4 text-lg">Loading your characters...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If not logged in, the redirect will happen in useEffect
+  if (!isLoggedIn || !user) {
+    return null
   }
 
   return (
@@ -90,16 +138,16 @@ export default function CharactersPage() {
                   </div>
 
                   <div className="flex justify-between">
-                    <Link href={`/character-builder?edit=${character.id}`}>
-                      <Button variant="outline" size="sm" className="gap-1">
+                    <Button variant="outline" size="sm" className="gap-1" asChild>
+                      <Link href={`/character-builder?edit=${character.id}`}>
                         <Edit className="h-4 w-4" /> Edit
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                     <Button
                       variant="destructive"
                       size="sm"
                       className="gap-1"
-                      onClick={() => deleteCharacter(character.id)}
+                      onClick={() => handleDeleteCharacter(character.id, character.name)}
                     >
                       <Trash2 className="h-4 w-4" /> Delete
                     </Button>

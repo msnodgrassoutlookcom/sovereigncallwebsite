@@ -1,6 +1,10 @@
 import { createServerSupabaseClient } from "./supabase"
 import type { User, SavedCharacter } from "./types"
 import { v4 as uuidv4 } from "uuid"
+import { sql as neon } from "@neondatabase/serverless"
+
+// Export the sql function
+export const sql = neon
 
 // Get all users (admin function)
 export async function getUsers(): Promise<User[]> {
@@ -23,7 +27,7 @@ export async function getUsers(): Promise<User[]> {
     resetTokenExpiry: user.resetTokenExpiry,
     profilePictureUrl: user.profile_picture_url,
     emailVerified: user.email_verified,
-    verificationToken: user.verification_token,
+    verificationToken: user.verificationToken,
     verificationTokenExpiry: user.verification_token_expiry,
     notificationPreferences: user.notification_preferences as User["notificationPreferences"],
     characters: user.characters.map((char) => ({

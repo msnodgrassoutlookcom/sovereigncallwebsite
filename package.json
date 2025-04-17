@@ -74,7 +74,10 @@
     "bcryptjs": "latest",
     "crypto": "latest",
     "isomorphic-dompurify": "latest",
-    "@vercel/kv": "latest"
+    "@vercel/kv": "latest",
+    "@tanstack/react-virtual": "latest",
+    "web-vitals": "latest",
+    "@neondatabase/serverless": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

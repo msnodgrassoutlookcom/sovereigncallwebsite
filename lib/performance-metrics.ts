@@ -1,3 +1,6 @@
+import { onCLS, onFID, onLCP, onTTFB } from "web-vitals"
+import { getRedisClient } from "./redis"
+
 // Performance monitoring utilities
 
 /**
@@ -119,5 +122,77 @@ export function initPerformanceMonitoring() {
       // Reset performance metrics for the new route
       performance.mark("routeChangeStart")
     })
+
+    captureWebVitals()
+  }
+}
+
+export function captureWebVitals() {
+  // Core Web Vitals
+  onCLS((metric) => sendToAnalytics("CLS", metric))
+  onFID((metric) => sendToAnalytics("FID", metric))
+  onLCP((metric) => sendToAnalytics("LCP", metric))
+  onTTFB((metric) => sendToAnalytics("TTFB", metric))
+}
+
+function sendToAnalytics(metricName: string, metric: any) {
+  // Use existing metrics endpoint
+  fetch("/api/system/metrics", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: metricName,
+      value: metric.value,
+      id: metric.id,
+      page: window.location.pathname,
+      timestamp: Date.now(),
+    }),
+    keepalive: true,
+  })
+}
+
+/**
+ * Record a custom metric.  This could be expanded to use Redis or other storage.
+ */
+async function recordMetric(name: string, value: number, type: string) {
+  try {
+    const redis = await getRedisClient()
+    if (!redis) {
+      console.warn("Redis client not available, skipping metric recording.")
+      return
+    }
+
+    const key = `metric:${name}`
+    const timestamp = Date.now()
+
+    // Store the metric as a JSON string
+    await redis.xadd(key, "*", {
+      value: String(value),
+      timestamp: String(timestamp),
+      type: type,
+    })
+
+    // Optionally, set a TTL for the metric data
+    await redis.expire(key, 3600) // Keep metrics for 1 hour
+
+    console.log(`Recorded metric ${name}: ${value} (${type})`)
+  } catch (error) {
+    console.error(`Failed to record metric ${name}:`, error)
+  }
+}
+
+/**
+ * Performance tracking middleware
+ */
+export function withPerformanceTracking(handler: Function, operationName: string) {
+  return async (request: Request) => {
+    const start = Date.now()
+    const response = await handler(request)
+    const timeMs = Date.now() - start
+
+    // Record metric in background (don't await)
+    recordMetric(`${operationName}.response_time`, timeMs, "histogram").catch(console.error)
+
+    return response
   }
 }

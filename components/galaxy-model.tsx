@@ -1,14 +1,22 @@
 "use client"
 
-import { useState } from "react"
-import GalaxyCanvas from "@/components/galaxy-canvas"
+import dynamic from "next/dynamic"
+import { Suspense, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Pause, Play, Info } from "lucide-react"
+import { Pause, Play, Info, Loader } from "lucide-react"
 import { motion } from "framer-motion"
+import { useMediaQuery } from "@/hooks/use-media-query"
+
+// Dynamically import the heavy component
+const GalaxyCanvas = dynamic(() => import("@/components/galaxy-canvas"), {
+  ssr: false, // Don't render on server
+  loading: () => <GalaxyFallback />,
+})
 
 export default function GalaxyModel() {
   const [isRotating, setIsRotating] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   return (
     <div className="relative h-[500px] w-full overflow-hidden rounded-lg border border-cyan-400/30 bg-black">
@@ -30,7 +38,9 @@ export default function GalaxyModel() {
         animate={{ opacity: 1 }}
         transition={{ duration: 1 }}
       >
-        <GalaxyCanvas isRotating={isRotating} />
+        <Suspense fallback={<GalaxyFallback />}>
+          <GalaxyCanvas isRotating={isRotating && !prefersReducedMotion} />
+        </Suspense>
       </motion.div>
 
       <div className="absolute bottom-4 right-4 flex space-x-2">
@@ -97,6 +107,17 @@ export default function GalaxyModel() {
       </div>
       <div className="absolute inset-x-0 -bottom-8 flex justify-center">
         <div className="w-1/3 h-1 bg-cyan-400/20 rounded-full"></div>
+      </div>
+    </div>
+  )
+}
+
+function GalaxyFallback() {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-black">
+      <div className="text-center">
+        <Loader className="mx-auto h-8 w-8 animate-spin text-cyan-400" />
+        <p className="mt-2 text-cyan-400">Loading galaxy map...</p>
       </div>
     </div>
   )

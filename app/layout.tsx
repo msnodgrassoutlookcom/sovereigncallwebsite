@@ -7,8 +7,13 @@ import { Toaster } from "@/components/ui/toaster"
 import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
 import DonationBanner from "@/components/donation-banner"
+import ClientInit from "@/app/client-init"
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap", // Add display swap
+  preload: true, // Ensure preloading
+})
 
 export const metadata = {
   title: "Sovereign Call - A Third-Person Sci-Fi RPG",
@@ -32,9 +37,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Preload critical assets */}
+        <link rel="preload" href="/images/logo.png" as="image" />
+        <link rel="preload" href="/images/hero/background.png" as="image" />
+      </head>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
           <AuthProvider>
+            <ClientInit />
             <DonationBanner />
             <div className="flex min-h-screen flex-col">
               <SiteHeader />
@@ -48,6 +59,3 @@ export default function RootLayout({
     </html>
   )
 }
-
-
-import './globals.css'

@@ -4,6 +4,78 @@ import { v4 as uuidv4 } from "uuid"
 import { getUserFromRequest } from "@/lib/auth"
 import { invalidateCache, invalidateCachePattern } from "@/lib/cache"
 
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url)
+    const threadId = url.searchParams.get("threadId")
+    const cursor = url.searchParams.get("cursor") // Last post ID for cursor pagination
+    const limit = Number.parseInt(url.searchParams.get("limit") || "20", 10)
+
+    if (!threadId) {
+      return NextResponse.json({ error: "Thread ID is required" }, { status: 400 })
+    }
+
+    // Cursor-based pagination is more efficient for large datasets
+    let query = supabase
+      .from("forum_posts")
+      .select(`
+        id,
+        content,
+        created_at,
+        user_id,
+        is_edited,
+        parent_id,
+        users:user_id (username, profile_picture_url)
+      `)
+      .eq("thread_id", threadId)
+      .order("created_at", { ascending: true })
+      .limit(limit)
+
+    if (cursor) {
+      query = query.gt("id", cursor)
+    }
+
+    const { data: posts, error } = await query
+
+    if (error) {
+      console.error("Error fetching posts:", error)
+      return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 })
+    }
+
+    // Format the posts for the client
+    const formattedPosts = posts.map((post) => ({
+      id: post.id,
+      content: post.content,
+      created_at: post.created_at,
+      user_id: post.user_id,
+      is_edited: post.is_edited,
+      parent_id: post.parent_id,
+      author: post.users?.username || "Unknown User",
+      author_avatar: post.users?.profile_picture_url || null,
+    }))
+
+    // Get the next cursor
+    const nextCursor = posts.length === limit ? posts[posts.length - 1].id : null
+
+    // Add cache headers
+    const response = NextResponse.json({
+      posts: formattedPosts,
+      pagination: {
+        nextCursor,
+        hasMore: nextCursor !== null,
+      },
+    })
+
+    // Add cache control headers - short TTL with stale-while-revalidate
+    response.headers.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60")
+
+    return response
+  } catch (error) {
+    console.error("Error fetching posts:", error)
+    return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 })
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const user = await getUserFromRequest(request)
