@@ -26,13 +26,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Load user from localStorage on initial render
   useEffect(() => {
-    const loadUser = () => {
+    const loadUser = async () => {
       try {
         const storedUser = localStorage.getItem("user")
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser)
           setUser(parsedUser)
           setIsLoggedIn(true)
+
+          // Add session refresh on load
+          await refreshUserSession(parsedUser.id)
+
           console.log("User loaded from localStorage:", parsedUser.username)
         } else {
           console.log("No user found in localStorage")
@@ -48,6 +52,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     loadUser()
   }, [])
+
+  // Add this new function to refresh the user session
+  const refreshUserSession = async (userId: string) => {
+    try {
+      const response = await fetch("/api/auth/refresh-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId }),
+      })
+
+      if (!response.ok) {
+        console.warn("Failed to refresh session, but continuing with stored credentials")
+      }
+
+      return response.ok
+    } catch (error) {
+      console.error("Error refreshing session:", error)
+      return false
+    }
+  }
 
   const login = async (username: string, password: string) => {
     try {

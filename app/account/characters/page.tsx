@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Edit, Trash2, Plus } from "lucide-react"
@@ -13,12 +13,34 @@ export default function CharactersPage() {
   const { isLoggedIn, user, deleteCharacter } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
+  const [isLoading, setIsLoading] = useState(true)
+  const [authChecked, setAuthChecked] = useState(false)
 
-  // Redirect if not logged in
+  // Improved auth check with retry mechanism
   useEffect(() => {
-    if (!isLoggedIn) {
-      router.push("/login")
+    let retryCount = 0
+    const maxRetries = 3
+
+    const checkAuth = () => {
+      if (isLoggedIn) {
+        setAuthChecked(true)
+        setIsLoading(false)
+        return
+      }
+
+      if (retryCount < maxRetries) {
+        retryCount++
+        // Wait a bit and try again to account for auth initialization
+        setTimeout(checkAuth, 500)
+      } else {
+        // After max retries, if still not logged in, redirect
+        setIsLoading(false)
+        setAuthChecked(true)
+        router.push("/login?redirect=/account/characters")
+      }
     }
+
+    checkAuth()
   }, [isLoggedIn, router])
 
   const handleDeleteCharacter = async (id: string, name: string) => {
@@ -40,8 +62,21 @@ export default function CharactersPage() {
     }
   }
 
-  if (!isLoggedIn) {
-    return null // Will redirect in useEffect
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto"></div>
+          <p className="mt-4 text-lg">Loading your characters...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If auth check is complete but not logged in, the redirect will happen
+  if (authChecked && !isLoggedIn) {
+    return null
   }
 
   return (

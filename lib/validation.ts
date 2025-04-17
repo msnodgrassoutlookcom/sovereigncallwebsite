@@ -149,3 +149,93 @@ export function isValidCreditCard(cardNumber: string): boolean {
 
   return sum % 10 === 0
 }
+
+/**
+ * Validates an incoming HTTP request
+ * @param request The incoming request to validate
+ * @param options Validation options
+ */
+export async function validateRequest(
+  request: Request,
+  options: {
+    requiredFields?: string[]
+    maxContentLength?: number
+    allowedMethods?: string[]
+    requireAuth?: boolean
+    csrfProtection?: boolean
+  } = {},
+): Promise<{
+  valid: boolean
+  errors: string[]
+  data?: any
+}> {
+  const errors: string[] = []
+
+  // Default options
+  const {
+    requiredFields = [],
+    maxContentLength = 1024 * 1024, // 1MB default
+    allowedMethods = ["GET", "POST", "PUT", "DELETE"],
+    requireAuth = false,
+    csrfProtection = true,
+  } = options
+
+  // Validate HTTP method
+  const method = request.method
+  if (!allowedMethods.includes(method)) {
+    errors.push(`Method ${method} not allowed`)
+    return { valid: false, errors }
+  }
+
+  // Validate content length for requests with body
+  if (["POST", "PUT", "PATCH"].includes(method)) {
+    const contentLength = Number.parseInt(request.headers.get("content-length") || "0", 10)
+    if (contentLength > maxContentLength) {
+      errors.push(`Request body too large (${contentLength} bytes)`)
+      return { valid: false, errors }
+    }
+  }
+
+  // Parse body data for requests with body
+  let data: any = {}
+  if (["POST", "PUT", "PATCH"].includes(method) && request.headers.get("content-type")?.includes("application/json")) {
+    try {
+      const clonedRequest = request.clone()
+      data = await clonedRequest.json()
+    } catch (e) {
+      errors.push("Invalid JSON body")
+      return { valid: false, errors }
+    }
+  }
+
+  // Check required fields
+  for (const field of requiredFields) {
+    if (!data[field]) {
+      errors.push(`Missing required field: ${field}`)
+    }
+  }
+
+  // Check for CSRF token if enabled
+  if (csrfProtection && ["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+    const csrfToken = request.headers.get("x-csrf-token")
+    if (!csrfToken) {
+      errors.push("Missing CSRF token")
+    }
+    // Note: Actual CSRF validation would need to be implemented based on your app's CSRF protection strategy
+  }
+
+  // Check authentication if required
+  if (requireAuth) {
+    const authHeader = request.headers.get("authorization")
+    if (!authHeader) {
+      errors.push("Authentication required")
+    }
+    // Note: Actual auth validation would need to be implemented based on your app's auth strategy
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    data,
+  }
+}

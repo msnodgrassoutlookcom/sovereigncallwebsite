@@ -75,12 +75,10 @@ export default function Home() {
                 As chaos spreads throughout the stars, you must navigate a complex web of loyalty, power, and ancient
                 technology to discover the truth behind the King's silence.
               </p>
-              <Link href="/timeline" passHref legacyBehavior>
-                <a className="inline-block">
-                  <Button variant="link" className="mt-4 p-0">
-                    Explore Full Timeline <ChevronRight className="ml-1 h-4 w-4" />
-                  </Button>
-                </a>
+              <Link href="/timeline">
+                <Button variant="link" className="mt-4 p-0">
+                  Explore Full Timeline <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
               </Link>
             </div>
             <div className="md:w-1/2">

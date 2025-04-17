@@ -26,6 +26,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(setupUrl)
   }
 
+  // Special handling for account pages to prevent auth issues
+  const path = request.nextUrl.pathname
+  if (path.startsWith("/account/")) {
+    // For account pages, we'll let the client handle auth redirects
+    // This prevents middleware from interfering with auth state
+    const response = NextResponse.next()
+    return addSecurityHeaders(response)
+  }
+
   // Get response from next middleware or route handler
   const response = NextResponse.next()
 
@@ -33,7 +42,6 @@ export async function middleware(request: NextRequest) {
   const secureResponse = addSecurityHeaders(response)
 
   // Check for suspicious activity on sensitive routes
-  const path = request.nextUrl.pathname
   if (
     path.startsWith("/api/auth") ||
     path.startsWith("/api/admin") ||

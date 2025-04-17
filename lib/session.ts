@@ -91,8 +91,27 @@ export async function refreshSession(userId: string) {
     const sessionData = await redis.get<string>(sessionKey)
 
     if (sessionData) {
-      // Extend session expiry
-      await redis.expire(sessionKey, 86400) // 24 hours
+      // Parse the session data
+      let sessionObj
+      try {
+        sessionObj = JSON.parse(sessionData)
+      } catch (e) {
+        console.error("Error parsing session data:", e)
+        return false
+      }
+
+      // Update the expiry time
+      const newExpiry = Math.floor(Date.now() / 1000) + 86400 // 24 hours from now
+      sessionObj.sessionExpiry = newExpiry
+
+      // Save the updated session
+      await redis.set(sessionKey, JSON.stringify(sessionObj), { ex: 86400 }) // 24 hours
+
+      // Also update any related session tokens
+      if (sessionObj.sessionToken) {
+        await redis.expire(`auth:token:${sessionObj.sessionToken}`, 86400)
+      }
+
       return true
     }
 
