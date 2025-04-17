@@ -261,6 +261,7 @@ export async function POST(request: Request) {
       sameSite: "strict",
       path: "/",
       maxAge: 7 * 24 * 60 * 60, // 7 days
+      domain: process.env.NODE_ENV === "production" ? ".sovereigncall.com" : undefined, // Add domain attribute for production
     })
 
     // Set user ID cookie (not HTTP-only, for client-side access)
@@ -272,6 +273,7 @@ export async function POST(request: Request) {
       sameSite: "strict",
       path: "/",
       maxAge: 7 * 24 * 60 * 60, // 7 days
+      domain: process.env.NODE_ENV === "production" ? ".sovereigncall.com" : undefined, // Add domain attribute for production
     })
 
     return response
