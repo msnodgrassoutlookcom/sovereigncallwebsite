@@ -1,6 +1,4 @@
-import { getRedisClient } from "./redis"
-
-// Cache expiration times (in seconds)
+// Cache times in seconds
 export const CACHE_TIMES = {
   TINY: 10, // 10 seconds
   SHORT: 60, // 1 minute
@@ -13,6 +11,13 @@ export const CACHE_TIMES = {
 interface CacheOptions {
   tags?: string[]
   staleWhileRevalidate?: boolean
+}
+
+// Initialize cacheStats object
+const cacheStats = {
+  hits: 0,
+  misses: 0,
+  errors: 0,
 }
 
 /**
@@ -51,7 +56,7 @@ export async function cache<T>(
           refreshCacheInBackground(key, fn, ttl, options).catch(console.error)
         }
 
-        return cached
+        return cached as T
       }
     } catch (error) {
       console.error(`Cache error for key ${key}:`, error)
